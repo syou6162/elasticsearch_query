@@ -1,0 +1,54 @@
+#!/usr/bin/env ruby
+require 'optparse'
+
+params = {}
+
+opt = OptionParser.new
+opt.on('--index index') {|v| params[:index] = v }
+opt.on('--type type') {|v| params[:type] = v }
+opt.on('--field field') {|v| params[:field] = v }
+opt.on('--time_field time_field') {|v| params[:time_field] = v }
+opt.on('--glt now-300d/d') {|v| params[:glt] = v }
+opt.on('--lte now/d') {|v| params[:lte] = v }
+opt.on('--size 10000') {|v| params[:size] = v }
+opt.on('--format (average|sum|raw)') {|v| params[:format] = v }
+
+opt.parse!(ARGV)
+
+def average(lines)
+  lines = lines.split("\n").map{|line| line.to_f}
+  lines.reduce(0.0){|result, n| result + n} / lines.count
+end
+
+def sum(lines)
+  lines = lines.split("\n").map{|line| line.to_f}
+  lines.reduce(0.0){|result, n| result + n}
+end
+
+def raw(lines)
+  lines
+end
+
+QUERY='
+{ "size": '"#{params[:size]}"',
+  "query": {
+    "range": {
+      "' + "#{params[:time_field]}" + '": {
+        "gte": "' + "#{params[:glt]}" + '",
+        "lte": "' + "#{params[:lte]}" + '",
+        "time_zone": "+09:00"
+      }
+    }
+  }
+}
+'
+
+result = `curl -s -XGET 'http://localhost:9200/#{params[:index]}/#{params[:type]}/_search' -d '#{QUERY}' | jq -r '.hits.hits[] | ._source | .#{params[:field]}'`
+
+if params[:format] == "average"
+  print '%.1f' % average(result)
+elsif params[:format] == "sum"
+  print '%.1f' % sum(result)
+else
+  print raw(result)
+end
